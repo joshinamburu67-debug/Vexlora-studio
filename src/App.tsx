@@ -8,13 +8,14 @@ import {
   setAccessTokenInMemory
 } from './lib/firebase';
 import {
+  sendSurveyEmail,
   sendSurveyEmailViaGmail,
   createSurveyGoogleSheet,
   appendSurveyResponseToSheet,
   createSurveyGoogleForm
 } from './lib/workspace';
 import type { SurveyResponse, WorkspaceConfig } from './types/survey';
-import { DEFAULT_TARGET_EMAIL } from './data/surveyQuestions';
+import { DEFAULT_TARGET_EMAIL, DEFAULT_WEB3FORMS_KEY } from './data/surveyQuestions';
 import { Navbar } from './components/Navbar';
 import { SurveyForm } from './components/SurveyForm';
 import { AdminHub } from './components/AdminHub';
@@ -95,6 +96,7 @@ export default function App() {
       formId: null,
       formUrl: null,
       formEditUrl: null,
+      web3FormsKey: DEFAULT_WEB3FORMS_KEY,
     };
   });
 
@@ -281,32 +283,33 @@ export default function App() {
   const executeSurveySubmission = async (responseItem: SurveyResponse) => {
     let updatedItem = { ...responseItem };
 
-    // Try sending email via Gmail API if user is authenticated or can authenticate
+    // High-reliability email delivery to vexloraindia@gmail.com
+    // Works for ALL visitors via Web3Forms with automatic fallback to Gmail API
     const token = await getAccessToken();
-    if (token) {
+    try {
+      const emailResult = await sendSurveyEmail(
+        updatedItem,
+        config.targetEmail,
+        token,
+        config.web3FormsKey || DEFAULT_WEB3FORMS_KEY
+      );
+      if (emailResult.success) {
+        updatedItem.emailedToVexlora = true;
+      }
+    } catch (e) {
+      console.warn('Email dispatch failed:', e);
+    }
+
+    // If admin is authenticated and connected to a Google Sheet, append row
+    if (token && config.spreadsheetId) {
       try {
-        const mailResult = await sendSurveyEmailViaGmail(token, updatedItem, config.targetEmail);
-        if (mailResult.success) {
-          updatedItem.emailedToVexlora = true;
+        const sheetResult = await appendSurveyResponseToSheet(token, config.spreadsheetId, updatedItem);
+        if (sheetResult.success) {
+          updatedItem.syncedToSheet = true;
         }
       } catch (e) {
-        console.warn('Gmail API send failed:', e);
+        console.warn('Google Sheets append failed:', e);
       }
-
-      // If connected to a Google Sheet, append row
-      if (config.spreadsheetId) {
-        try {
-          const sheetResult = await appendSurveyResponseToSheet(token, config.spreadsheetId, updatedItem);
-          if (sheetResult.success) {
-            updatedItem.syncedToSheet = true;
-          }
-        } catch (e) {
-          console.warn('Google Sheets append failed:', e);
-        }
-      }
-    } else {
-      // User submitted without Google token: record response locally and notify
-      updatedItem.emailedToVexlora = true;
     }
 
     const updatedList = [updatedItem, ...responses];
@@ -426,19 +429,18 @@ export default function App() {
         setConfirmationState((prev) => ({ ...prev, isOpen: false }));
         setIsSendingEmail(true);
         try {
-          const token = await requireAccessToken();
-          if (!token) return;
+          const token = await getAccessToken();
 
           const testPayload: SurveyResponse = {
             id: `test_${Date.now()}`,
             submittedAt: new Date().toISOString(),
-            respondentName: user?.displayName || 'Test Respondent',
-            respondentEmail: user?.email || 'tester@vexlora.com',
+            respondentName: user?.displayName || 'Vexlora Test Admin',
+            respondentEmail: user?.email || 'vexloraindia@gmail.com',
             organizationOrRole: 'Product Quality Specialist',
-            primaryProblems: '[TEST SUBMISSION] Manual synchronization between multiple software tools and slow customer follow-ups.',
+            primaryProblems: '[TEST SUBMISSION] Verification of real-time survey reply forwarding to vexloraindia@gmail.com.',
             problemFrequency: 'Daily',
             severityRating: 9,
-            currentToolsOrWorkarounds: 'Manual spreadsheets and WhatsApp reminders',
+            currentToolsOrWorkarounds: 'Automatic notification relay via Web3Forms & Gmail',
             suggestedFeatures: 'Automated integration with Google Sheets, instant Gmail notifications to vexloraindia@gmail.com, and real-time dashboard.',
             preferredPlatform: 'Web App',
             mustHaveCapabilities: [
@@ -448,14 +450,19 @@ export default function App() {
             ],
             switchingFactor: 'Reliability and instant delivery of critical customer survey data.',
             willingToBetaTest: true,
-            additionalNotes: 'This test confirms that the Gmail API integration to vexloraindia@gmail.com is operating perfectly!',
+            additionalNotes: 'This test confirms that email delivery to vexloraindia@gmail.com is operating perfectly!',
           };
 
-          const res = await sendSurveyEmailViaGmail(token, testPayload, config.targetEmail);
+          const res = await sendSurveyEmail(
+            testPayload,
+            config.targetEmail,
+            token,
+            config.web3FormsKey || DEFAULT_WEB3FORMS_KEY
+          );
           if (res.success) {
             setBanner({
               type: 'success',
-              message: `Test email successfully sent to ${config.targetEmail}! Check the inbox.`,
+              message: `Test email successfully sent to ${config.targetEmail} (via ${res.method === 'web3forms' ? 'Web3Forms Relay' : 'Gmail API'})! Check your inbox.`,
             });
           } else {
             throw new Error(res.error || 'Failed to send test email');
@@ -464,7 +471,7 @@ export default function App() {
           console.error(err);
           setBanner({
             type: 'error',
-            message: `Failed to send email: ${err.message || 'Check Gmail permissions.'}`,
+            message: `Failed to send email: ${err.message || 'Check email configuration.'}`,
           });
         } finally {
           setIsSendingEmail(false);
@@ -478,7 +485,7 @@ export default function App() {
     setConfirmationState({
       isOpen: true,
       title: `Forward Response to ${config.targetEmail}`,
-      description: `Send survey response from ${item.respondentName || item.respondentEmail} to ${config.targetEmail} via Gmail.`,
+      description: `Send survey response from ${item.respondentName || item.respondentEmail} to ${config.targetEmail}.`,
       confirmButtonText: 'Forward Email',
       details: {
         recipient: config.targetEmail,
@@ -488,9 +495,13 @@ export default function App() {
         setConfirmationState((prev) => ({ ...prev, isOpen: false }));
         setIsProcessingAction(true);
         try {
-          const token = await requireAccessToken();
-          if (!token) return;
-          const res = await sendSurveyEmailViaGmail(token, item, config.targetEmail);
+          const token = await getAccessToken();
+          const res = await sendSurveyEmail(
+            item,
+            config.targetEmail,
+            token,
+            config.web3FormsKey || DEFAULT_WEB3FORMS_KEY
+          );
           if (res.success) {
             setBanner({
               type: 'success',

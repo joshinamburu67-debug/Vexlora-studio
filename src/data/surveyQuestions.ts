@@ -37,8 +37,10 @@ export const PLATFORM_OPTIONS = [
 ] as const;
 
 export const DEFAULT_TARGET_EMAIL = 'vexloraindia@gmail.com';
+export const DEFAULT_WEB3FORMS_KEY = '773b98b6-1b50-4599-9b6b-561fc9794423';
 
 export const DEFAULT_TESTERS = [
   'joshi.namburu8@gmail.com',
   'senikushikumari@gmail.com'
 ];
+

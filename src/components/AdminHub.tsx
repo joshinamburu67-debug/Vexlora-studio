@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import type { WorkspaceConfig, SurveyResponse } from '../types/survey';
 import { GoogleSignInButton } from './GoogleSignInButton';
-import { DEFAULT_TARGET_EMAIL } from '../data/surveyQuestions';
+import { DEFAULT_TARGET_EMAIL, DEFAULT_WEB3FORMS_KEY } from '../data/surveyQuestions';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 interface Props {
@@ -101,9 +101,9 @@ export const AdminHub: React.FC<Props> = ({
             <div className="w-12 h-12 rounded-xl bg-red-50 text-red-600 flex items-center justify-center mb-4 border border-red-100">
               <Mail className="w-6 h-6" />
             </div>
-            <h3 className="text-lg font-bold text-gray-900">Gmail Auto-Forwarding</h3>
+            <h3 className="text-lg font-bold text-gray-900">Email Auto-Forwarding</h3>
             <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-              Every survey response is automatically formatted into an executive summary and emailed to the target inbox.
+              Every survey response is automatically formatted into an executive summary and delivered directly to your target inbox.
             </p>
 
             <div className="mt-4 p-3 rounded-xl bg-gray-50 border border-gray-200 text-xs space-y-1.5">
@@ -113,8 +113,14 @@ export const AdminHub: React.FC<Props> = ({
               </div>
               <div className="flex items-center gap-1.5 text-[11px] text-emerald-700 font-medium pt-1">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span>Direct Gmail API Integration Active</span>
+                <span>Web3Forms Instant Relay Active (All Visitors)</span>
               </div>
+              {isAuthenticated && (
+                <div className="flex items-center gap-1.5 text-[11px] text-blue-700 font-medium">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  <span>Gmail API Backup Active</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -262,8 +268,8 @@ export const AdminHub: React.FC<Props> = ({
       </div>
 
       {/* Target Email Configuration & Quick Links */}
-      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-xs">
-        <h3 className="text-base font-bold text-gray-900 mb-3">Notification & Delivery Settings</h3>
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-xs space-y-4">
+        <h3 className="text-base font-bold text-gray-900">Notification & Delivery Settings</h3>
         <div className="flex flex-col sm:flex-row items-center gap-3">
           <div className="flex-1 w-full">
             <label className="block text-xs font-semibold text-gray-600 mb-1">
@@ -283,6 +289,29 @@ export const AdminHub: React.FC<Props> = ({
               className="w-full sm:w-auto px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors cursor-pointer"
             >
               Reset to Default (vexloraindia@gmail.com)
+            </button>
+          </div>
+        </div>
+
+        <div className="pt-3 border-t border-gray-100 flex flex-col sm:flex-row items-center gap-3">
+          <div className="flex-1 w-full">
+            <label className="block text-xs font-semibold text-gray-600 mb-1">
+              Web3Forms Instant Relay Access Key (Used for all visitor submissions):
+            </label>
+            <input
+              type="text"
+              value={config.web3FormsKey || DEFAULT_WEB3FORMS_KEY}
+              onChange={(e) => onSaveConfig({ ...config, web3FormsKey: e.target.value })}
+              className="w-full px-3.5 py-2 text-sm font-mono border border-gray-300 rounded-xl bg-gray-50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-medium"
+            />
+          </div>
+          <div className="self-end pt-5 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => onSaveConfig({ ...config, web3FormsKey: DEFAULT_WEB3FORMS_KEY })}
+              className="w-full sm:w-auto px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors cursor-pointer"
+            >
+              Reset Key
             </button>
           </div>
         </div>

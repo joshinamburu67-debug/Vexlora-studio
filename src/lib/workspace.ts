@@ -170,6 +170,87 @@ export async function sendSurveyEmailViaGmail(
 }
 
 /**
+ * Send survey response email directly via Web3Forms (delivers to vexloraindia@gmail.com without OAuth requirements)
+ */
+export async function sendSurveyEmailViaWeb3Forms(
+  response: SurveyResponse,
+  targetEmail = 'vexloraindia@gmail.com',
+  accessKey = '773b98b6-1b50-4599-9b6b-561fc9794423'
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const payload = {
+      access_key: accessKey,
+      subject: `[Vexlora Survey Reply] Problem Discovery & Ideas from ${response.respondentName || 'Anonymous'}`,
+      from_name: 'Vexlora Survey Studio',
+      to: targetEmail,
+      name: response.respondentName || 'Anonymous',
+      email: response.respondentEmail,
+      'Respondent Name': response.respondentName || 'Not specified',
+      'Respondent Email': response.respondentEmail,
+      'Role or Organization': response.organizationOrRole || 'General User',
+      'Primary Problems and Bottlenecks': response.primaryProblems,
+      'Problem Frequency': response.problemFrequency,
+      'Pain Severity (1-10)': `${response.severityRating} / 10`,
+      'Current Workarounds or Tools': response.currentToolsOrWorkarounds || 'None provided',
+      'Suggested Features': response.suggestedFeatures,
+      'Preferred Platform': response.preferredPlatform,
+      'Must-Have Capabilities': response.mustHaveCapabilities.length > 0 ? response.mustHaveCapabilities.join(', ') : 'None selected',
+      'What Would Make You Switch': response.switchingFactor || 'Not specified',
+      'Willing to Beta Test': response.willingToBetaTest ? 'Yes (Eager to try early builds)' : 'No',
+      'Additional Advice or Notes': response.additionalNotes || 'None',
+      'Submitted At': new Date(response.submittedAt).toLocaleString(),
+    };
+
+    const res = await fetch('https://api.web3forms.com/submit', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && (data?.success || data?.status === 200)) {
+      return { success: true, messageId: data?.data?.id || 'web3forms-ok' };
+    }
+    return { success: false, error: data?.message || `Web3Forms returned status ${res.status}` };
+  } catch (error: any) {
+    console.error('Failed to send survey email via Web3Forms:', error);
+    return { success: false, error: error.message || 'Error delivering email' };
+  }
+}
+
+/**
+ * High-reliability survey email dispatcher
+ * Dispatches via Web3Forms (works for all visitors with zero auth) and falls back to Gmail API if available
+ */
+export async function sendSurveyEmail(
+  response: SurveyResponse,
+  targetEmail = 'vexloraindia@gmail.com',
+  accessToken?: string | null,
+  web3FormsKey = '773b98b6-1b50-4599-9b6b-561fc9794423'
+): Promise<{ success: boolean; method: 'web3forms' | 'gmail'; error?: string }> {
+  // 1. Try Web3Forms first - works instantly for any user without popup or Google token
+  const web3Res = await sendSurveyEmailViaWeb3Forms(response, targetEmail, web3FormsKey);
+  if (web3Res.success) {
+    return { success: true, method: 'web3forms' };
+  }
+
+  // 2. If Web3Forms failed and an admin Google OAuth token is available, attempt Gmail API
+  if (accessToken) {
+    const gmailRes = await sendSurveyEmailViaGmail(accessToken, response, targetEmail);
+    if (gmailRes.success) {
+      return { success: true, method: 'gmail' };
+    }
+    return { success: false, method: 'gmail', error: gmailRes.error || web3Res.error };
+  }
+
+  return { success: false, method: 'web3forms', error: web3Res.error };
+}
+
+
+/**
  * Create a new Google Spreadsheet dedicated to storing survey responses
  */
 export async function createSurveyGoogleSheet(

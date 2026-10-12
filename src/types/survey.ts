@@ -27,4 +27,5 @@ export interface WorkspaceConfig {
   formUrl: string | null;
   formEditUrl: string | null;
   authorizedTesters?: string[];
+  web3FormsKey?: string;
 }
